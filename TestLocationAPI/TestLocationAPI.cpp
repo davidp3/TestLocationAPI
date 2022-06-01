@@ -22,6 +22,7 @@ public:
   STDMETHODIMP OnLocationChanged(REFIID aReportType,
     ILocationReport* aReport) override;
 
+  virtual ~LocationEvent() { }
 private:
   ULONG mCount = 0;
 };
@@ -57,78 +58,93 @@ LocationEvent::QueryInterface(REFIID iid, void** ppv) {
 STDMETHODIMP
 LocationEvent::OnStatusChanged(REFIID aReportType,
   LOCATION_REPORT_STATUS aStatus) {
-  printf("LocationEvent::OnStatusChanged\n");
   return S_OK;
 }
 
 STDMETHODIMP
 LocationEvent::OnLocationChanged(REFIID aReportType, ILocationReport* aReport) {
-  printf("LocationEvent::OnLocationChanged\n");
   return S_OK;
 }
 
 class CInitializeATL : public CAtlExeModuleT<CInitializeATL> {};
 CInitializeATL g_InitializeATL; // Initializes ATL for this application. This also does CoInitialize for us
 
+void RunTest() {
+  CComPtr<ILocation> spLocation; // This is the main Location interface
+  LocationEvent* pLocationEvents = NULL; // This is our callback object for location reports
+  IID REPORT_TYPES[] = { IID_ILatLongReport }; // Array of report types of interest. Other ones include IID_ICivicAddressReport
+
+  // HRESULT hr = spLocation.CoCreateInstance(CLSID_Location); // works
+  HRESULT hr = spLocation.CoCreateInstance(CLSID_Location, nullptr, CLSCTX_INPROC_SERVER); // fails
+
+  if (SUCCEEDED(hr))
+  {
+    pLocationEvents = new LocationEvent();
+    if (NULL != pLocationEvents)
+    {
+      pLocationEvents->AddRef();
+    }
+  }
+
+  if (SUCCEEDED(hr))
+  {
+    // Request permissions for this user account to receive location data for all the
+    // types defined in REPORT_TYPES (which is currently just one report)
+    if (FAILED(spLocation->RequestPermissions(NULL, REPORT_TYPES, ARRAYSIZE(REPORT_TYPES), FALSE))) // FALSE means an asynchronous request
+    {
+      wprintf(L"Warning: Unable to request permissions.\n");
+    }
+
+    // Tell the Location API that we want to register for reports (which is currently just one report)
+    for (DWORD index = 0; index < ARRAYSIZE(REPORT_TYPES); index++)
+    {
+      hr = spLocation->RegisterForReport(pLocationEvents, REPORT_TYPES[index], 0);
+    }
+
+    // Don't hold a reference, leave that to LocationAPI.
+    pLocationEvents->Release();
+  }
+
+  if (SUCCEEDED(hr))
+  {
+    for (;;) {
+      for (DWORD index = 0; index < ARRAYSIZE(REPORT_TYPES); index++)
+      { 
+        LOCATION_DESIRED_ACCURACY accuracy;
+        (void)accuracy;
+        hr = spLocation->SetDesiredAccuracy(REPORT_TYPES[index], LOCATION_DESIRED_ACCURACY_HIGH);
+        hr = spLocation->SetDesiredAccuracy(REPORT_TYPES[index], LOCATION_DESIRED_ACCURACY_DEFAULT);
+      }
+      if (::rand() < 500) {
+        break;
+      }
+    }
+  }
+
+  for (DWORD index = 0; index < ARRAYSIZE(REPORT_TYPES); index++)
+  {
+    spLocation->UnregisterForReport(REPORT_TYPES[index]);
+  }
+
+  // Cleanup
+  if (NULL != pLocationEvents)
+  {
+    //      pLocationEvents->Release();
+    pLocationEvents = NULL;
+  }
+}
+
 int wmain()
 {
   // Run in MTA:
-  // HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
+  //HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
   // Run in STA:
   HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+
   if (SUCCEEDED(hr))
   {
-    CComPtr<ILocation> spLocation; // This is the main Location interface
-    LocationEvent* pLocationEvents = NULL; // This is our callback object for location reports
-    IID REPORT_TYPES[] = { IID_ILatLongReport }; // Array of report types of interest. Other ones include IID_ICivicAddressReport
-
-    hr = spLocation.CoCreateInstance(CLSID_Location); // Create the Location object
-
-    if (SUCCEEDED(hr))
-    {
-      pLocationEvents = new LocationEvent();
-      if (NULL != pLocationEvents)
-      {
-        pLocationEvents->AddRef();
-      }
-    }
-
-    if (SUCCEEDED(hr))
-    {
-      // Request permissions for this user account to receive location data for all the
-      // types defined in REPORT_TYPES (which is currently just one report)
-      if (FAILED(spLocation->RequestPermissions(NULL, REPORT_TYPES, ARRAYSIZE(REPORT_TYPES), FALSE))) // FALSE means an asynchronous request
-      {
-        wprintf(L"Warning: Unable to request permissions.\n");
-      }
-
-      // Tell the Location API that we want to register for reports (which is currently just one report)
-      for (DWORD index = 0; index < ARRAYSIZE(REPORT_TYPES); index++)
-      {
-        hr = spLocation->RegisterForReport(pLocationEvents, REPORT_TYPES[index], 0);
-      }
-    }
-
-    if (SUCCEEDED(hr))
-    {
-      // Wait until user presses a key to exit app. During this time the Location API
-      // will send reports to our callback interface on another thread (if running in MTA).
-      system("pause");
-
-      // Unregister from reports from the Location API
-      for (DWORD index = 0; index < ARRAYSIZE(REPORT_TYPES); index++)
-      {
-        spLocation->UnregisterForReport(REPORT_TYPES[index]);
-        // DLP TEST: Double UnregisterForReport
-        spLocation->UnregisterForReport(REPORT_TYPES[index]);
-      }
-    }
-
-    // Cleanup
-    if (NULL != pLocationEvents)
-    {
-      pLocationEvents->Release();
-      pLocationEvents = NULL;
+    for (;;) {
+      RunTest();
     }
 
   }
