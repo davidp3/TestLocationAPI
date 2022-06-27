@@ -74,7 +74,6 @@ void RunTest() {
   LocationEvent* pLocationEvents = NULL; // This is our callback object for location reports
   IID REPORT_TYPES[] = { IID_ILatLongReport }; // Array of report types of interest. Other ones include IID_ICivicAddressReport
 
-  // HRESULT hr = spLocation.CoCreateInstance(CLSID_Location); // works
   HRESULT hr = spLocation.CoCreateInstance(CLSID_Location, nullptr, CLSCTX_INPROC_SERVER); // fails
 
   if (SUCCEEDED(hr))
@@ -119,17 +118,18 @@ void RunTest() {
         break;
       }
     }
-  }
 
-  for (DWORD index = 0; index < ARRAYSIZE(REPORT_TYPES); index++)
-  {
-    spLocation->UnregisterForReport(REPORT_TYPES[index]);
+    for (DWORD index = 0; index < ARRAYSIZE(REPORT_TYPES); index++)
+    {
+      spLocation->UnregisterForReport(REPORT_TYPES[index]);
+    }
+
   }
 
   // Cleanup
   if (NULL != pLocationEvents)
   {
-    //      pLocationEvents->Release();
+    pLocationEvents->Release();
     pLocationEvents = NULL;
   }
 }
